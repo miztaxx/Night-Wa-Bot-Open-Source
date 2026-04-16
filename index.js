@@ -1,5 +1,3 @@
-// index.js - The main file for the bot (ESM Version)
-
 import makeWASocket, {
     useMultiFileAuthState,
     DisconnectReason,
@@ -43,7 +41,6 @@ for (const file of commandFiles) {
     }
 }
 
-
 async function startBot() {
     // Save the session
     const { state, saveCreds } = await useMultiFileAuthState(Config.sessionName);
@@ -67,9 +64,12 @@ async function startBot() {
     });
 
     store?.bind(sock.ev);
+    
+    // Attach commands map to the socket so plugins like 'menu' can access it
+    sock.commands = commands;
 
     // Handle connection updates
-    sock.ev.on("connection.update", (update) => {
+    sock.ev.on("connection.update", async (update) => {
         const { connection, lastDisconnect, qr } = update;
         if (qr) {
             console.log("QR code received, please scan.");
@@ -82,6 +82,7 @@ async function startBot() {
             }
         } else if (connection === "open") {
             console.log("✅ Successfully connected to WhatsApp!");
+            
             // Set initial presence based on settings
             const { bot_mode } = getSettings();
             if (bot_mode === 'online') {
@@ -90,6 +91,18 @@ async function startBot() {
             } else {
                 sock.sendPresenceUpdate('unavailable'); // Offline (Last seen)
                 console.log("Bot mode is OFFLINE. Presence set to 'unavailable'.");
+            }
+
+            // --- Send Start Message to Bot's Own Inbox ---
+            try {
+                // Get the bot's own number and format it correctly to handle device IDs
+                const botNumber = sock.user.id.split(':')[0] + '@s.whatsapp.net';
+                const startMessage = `*🤖 Bot has successfully started!* \n\n✅ System is online and ready to receive commands.\nTotal loaded commands: ${commands.size}`;
+                
+                await sock.sendMessage(botNumber, { text: startMessage });
+                console.log("📨 Start message sent to inbox.");
+            } catch (err) {
+                console.error("Failed to send start message:", err);
             }
         }
     });
@@ -117,9 +130,7 @@ async function startBot() {
 
             // --- Auto React Logic ---
             if (currentSettings.auto_react && !m.key.fromMe) {
-                // Array of emojis to choose from
                 const emojis = ['😊', '❤️', '😂', '👍', '🔥', '🎉', '✨', '💯', '🙌', '👌'];
-                // Select a random emoji
                 const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
                 const reaction = { react: { text: randomEmoji, key: m.key } };
                 await sock.sendMessage(sender, reaction);
